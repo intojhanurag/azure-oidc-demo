@@ -42,7 +42,8 @@ jobs:
             --name my-go-oidc-plan \
             --resource-group $AZURE_RESOURCE_GROUP \
             --sku B1 \
-            --is-linux
+            --is-linux \
+            --location centralindia
 
       - name: Create Web App (if not exists)
         run: |
