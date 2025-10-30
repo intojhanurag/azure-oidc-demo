@@ -12,6 +12,7 @@ env:
   AZURE_WEBAPP_NAME: my-go-oidc-demo
   AZURE_RESOURCE_GROUP: my-go-oidc-rg
   DOCKER_IMAGE_NAME: my-go-oidc-demo
+  ACR_NAME: mygooidcacr
 
 jobs:
   build-and-deploy:
@@ -36,6 +37,23 @@ jobs:
         run: |
           az group create --name $AZURE_RESOURCE_GROUP --location eastus
 
+      - name: Create Azure Container Registry (if not exists)
+        run: |
+          az acr create --resource-group $AZURE_RESOURCE_GROUP \
+            --name $ACR_NAME \
+            --sku Basic || true
+
+      - name: Login to ACR
+        run: |
+          az acr login --name $ACR_NAME
+
+      - name: Tag and Push Docker image to ACR
+        run: |
+          ACR_LOGIN_SERVER=$(az acr show --name $ACR_NAME --query loginServer -o tsv)
+          docker tag $DOCKER_IMAGE_NAME $ACR_LOGIN_SERVER/$DOCKER_IMAGE_NAME:latest
+          docker push $ACR_LOGIN_SERVER/$DOCKER_IMAGE_NAME:latest
+          echo "ACR_LOGIN_SERVER=$ACR_LOGIN_SERVER" >> $GITHUB_ENV
+
       - name: Create App Service Plan (if not exists)
         run: |
           az appservice plan create \
@@ -43,7 +61,7 @@ jobs:
             --resource-group $AZURE_RESOURCE_GROUP \
             --sku B1 \
             --is-linux \
-            --location centralindia
+            --location centralindia || true
 
       - name: Create Web App (if not exists)
         run: |
@@ -51,11 +69,13 @@ jobs:
             --resource-group $AZURE_RESOURCE_GROUP \
             --plan my-go-oidc-plan \
             --name $AZURE_WEBAPP_NAME \
-            --deployment-container-image-name $DOCKER_IMAGE_NAME || true
+            --deployment-container-image-name $ACR_LOGIN_SERVER/$DOCKER_IMAGE_NAME:latest || true
 
-      - name: Deploy container image to Azure Web App
+      - name: Configure Web App to use image from ACR
         run: |
           az webapp config container set \
             --name $AZURE_WEBAPP_NAME \
             --resource-group $AZURE_RESOURCE_GROUP \
-            --docker-custom-image-name $DOCKER_IMAGE_NAME
+            --docker-custom-image-name $ACR_LOGIN_SERVER/$DOCKER_IMAGE_NAME:latest \
+            --docker-registry-server-url https://$ACR_LOGIN_SERVER
+
