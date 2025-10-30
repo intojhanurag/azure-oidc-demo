@@ -20,6 +20,8 @@ func main() {
 
 	http.HandleFunc("/", handler)
 	log.Printf("✅ Server running on port %s\n", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	// Prepend "0.0.0.0:" to the port to explicitly listen on all network interfaces
+	address := "0.0.0.0:" + port
+	log.Fatal(http.ListenAndServe(address, nil))
 }
 
