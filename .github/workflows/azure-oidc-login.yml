@@ -1,15 +1,20 @@
-name: Azure OIDC Login (Go Demo)
+name: Azure OIDC Go Deploy
 
 on:
   push:
     branches: [main]
 
 permissions:
-  id-token: write    # Required for OIDC
+  id-token: write
   contents: read
 
+env:
+  AZURE_WEBAPP_NAME: my-go-oidc-demo
+  AZURE_RESOURCE_GROUP: my-go-oidc-rg
+  DOCKER_IMAGE_NAME: my-go-oidc-demo
+
 jobs:
-  oidc-login-demo:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,19 +28,33 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Verify Azure context
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az account show --output table
+      - name: Build Docker image
+        run: |
+          docker build -t $DOCKER_IMAGE_NAME .
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
+      - name: Create resource group (if not exists)
+        run: |
+          az group create --name $AZURE_RESOURCE_GROUP --location eastus
 
-      - name: Build Go app
-        run: go build -o app main.go
+      - name: Create App Service Plan (if not exists)
+        run: |
+          az appservice plan create \
+            --name my-go-oidc-plan \
+            --resource-group $AZURE_RESOURCE_GROUP \
+            --sku B1 \
+            --is-linux
 
-      - name: Run Go app
-        run: ./app &
+      - name: Create Web App (if not exists)
+        run: |
+          az webapp create \
+            --resource-group $AZURE_RESOURCE_GROUP \
+            --plan my-go-oidc-plan \
+            --name $AZURE_WEBAPP_NAME \
+            --deployment-container-image-name $DOCKER_IMAGE_NAME || true
+
+      - name: Deploy container image to Azure Web App
+        run: |
+          az webapp config container set \
+            --name $AZURE_WEBAPP_NAME \
+            --resource-group $AZURE_RESOURCE_GROUP \
+            --docker-custom-image-name $DOCKER_IMAGE_NAME
